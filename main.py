@@ -1,69 +1,39 @@
 #!/usr/bin/env python3
-"""Draw the Saturday 21 November 2026 world-news front page.
-
-One image, 1024x1024, deterministic. Python + Pillow only, no network.
-Run:  mkdir -p out && MAKEFUN_OUTPUT_DIR=out python3 main.py
-Without MAKEFUN_OUTPUT_DIR it writes entry.png next to this file.
-"""
-
-import math
+"""news-image-20261121 v4: front page like the 19 Nov winner.
+Draws Saturday 21 November 2026 world news in one 1024x1024 image.
+Python + Pillow only, no network, deterministic."""
 import os
-
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1024, 1024
-CREAM = (247, 241, 227)
-NAVY = (27, 42, 74)
-RED = (192, 57, 43)
-GOLD = (212, 160, 23)
-INK = (28, 28, 28)
-GREY = (96, 96, 96)
-LINE = (216, 208, 189)
+CREAM = (245, 240, 230)
+NAVY = (20, 35, 70)
+RED = (190, 30, 30)
+GOLD = (212, 175, 55)
+INK = (30, 30, 30)
+GREY = (110, 110, 110)
 WHITE = (255, 255, 255)
-MAP_DOT = (51, 65, 94)
 
-F_SERIF_B = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-F_SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
-F_SERIF_I = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf"
-F_SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-F_SANS_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
 
-def font(path, size, fallback=None):
-    try:
-        return ImageFont.truetype(path, size)
-    except OSError:
-        if fallback:
-            return ImageFont.truetype(fallback, size)
-        return ImageFont.load_default()
+def font(name, size):
+    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
 
 
-def serif_b(size):
-    return font(F_SERIF_B, size)
+F_SERIF_B = lambda s: font("DejaVuSerif-Bold.ttf", s)
+F_SERIF = lambda s: font("DejaVuSerif.ttf", s)
+F_SERIF_I = lambda s: font("DejaVuSerif.ttf", s)  # no Serif-Italic on system
+F_SANS_B = lambda s: font("DejaVuSans-Bold.ttf", s)
+F_SANS = lambda s: font("DejaVuSans.ttf", s)
 
 
-def serif(size):
-    return font(F_SERIF, size)
-
-
-def serif_i(size):
-    return font(F_SERIF_I, size, fallback=F_SERIF)
-
-
-def sans(size):
-    return font(F_SANS, size)
-
-
-def sans_b(size):
-    return font(F_SANS_B, size)
-
-
-def wrap(d, text, fnt, max_w):
+def wrap(draw, text, fnt, max_w):
     words = text.split()
     lines, cur = [], ""
     for w in words:
         t = (cur + " " + w).strip()
-        if d.textlength(t, font=fnt) <= max_w:
+        if draw.textlength(t, font=fnt) <= max_w:
             cur = t
         else:
             if cur:
@@ -74,402 +44,368 @@ def wrap(d, text, fnt, max_w):
     return lines
 
 
-def burst(d, cx, cy, r, color):
-    pts = []
-    for i in range(16):
-        ang = math.pi * i / 8.0
-        rr = r if i % 2 == 0 else r * 0.45
-        pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
-    d.polygon(pts, fill=color)
+def text(draw, xy, s, fnt, fill=INK, anchor="la"):
+    draw.text(xy, s, font=fnt, fill=fill, anchor=anchor)
 
 
-def star4(d, cx, cy, r, color):
-    d.polygon([(cx, cy - r), (cx + r * 0.28, cy - r * 0.28),
-               (cx + r, cy), (cx + r * 0.28, cy + r * 0.28),
-               (cx, cy + r), (cx - r * 0.28, cy + r * 0.28),
-               (cx - r, cy), (cx - r * 0.28, cy - r * 0.28)], fill=color)
+def draw_badge(draw, cx, cy, num, color):
+    r = 11
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color,
+                 outline=WHITE, width=2)
+    text(draw, (cx, cy), str(num), F_SANS_B(13), WHITE, anchor="mm")
 
 
-# ---------------------------------------------------------------- illustrations
+def draw_card(draw, x, y, w, h, num, cat, cat_color, headline, summary,
+              source, ill):
+    draw.rectangle([x, y, x + w, y + h], fill=WHITE, outline=(200, 190, 175))
+    ill_h = 52 if w > 300 else 44
+    ill(draw, x, y, w, ill_h)
+    draw_badge(draw, x + 16, y + ill_h + 12, num, cat_color)
+    text(draw, (x + 32, y + ill_h + 4), cat, F_SANS_B(11), cat_color)
+    hl = wrap(draw, headline, F_SERIF_B(17 if w > 300 else 15), w - 20)
+    yy = y + ill_h + 22
+    lh = 19 if w > 300 else 17
+    for ln in hl[:2]:
+        text(draw, (x + 10, yy), ln, F_SERIF_B(17 if w > 300 else 15))
+        yy += lh
+    sm = wrap(draw, summary, F_SERIF(12), w - 20)
+    yy += 2
+    if sm:
+        text(draw, (x + 10, yy), sm[0], F_SERIF(12), (60, 60, 60))
+    text(draw, (x + 10, y + h - 16), source, F_SANS(9), GREY)
+
+
+# ---- illustrations (flat vector shapes) ----
 def ill_kyiv(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(26, 35, 64))
-    for sx, sy in [(0.12, 0.2), (0.3, 0.12), (0.55, 0.25), (0.8, 0.15), (0.92, 0.3)]:
-        d.ellipse([x + w * sx - 1, y + h * sy - 1, x + w * sx + 1, y + h * sy + 1],
-                  fill=(255, 255, 255))
-    d.ellipse([x + w * 0.82 - 14, y + h * 0.18 - 14, x + w * 0.82 + 14, y + h * 0.18 + 14],
-              fill=(240, 180, 60))
-    for bx, bw, bh in [(0.05, 0.2, 0.45), (0.3, 0.16, 0.6), (0.5, 0.22, 0.5), (0.75, 0.18, 0.4)]:
-        d.rectangle([x + w * bx, y + h - h * bh, x + w * (bx + bw), y + h], fill=(12, 18, 38))
-        for wy in range(2):
-            for wx in range(3):
-                d.rectangle([x + w * bx + 5 + wx * 12, y + h - h * bh + 6 + wy * 12,
-                             x + w * bx + 10 + wx * 12, y + h - h * bh + 11 + wy * 12],
-                            fill=(250, 210, 90))
-    burst(d, x + w * 0.68, y + h * 0.42, 16, (255, 140, 40))
-    burst(d, x + w * 0.68, y + h * 0.42, 9, (255, 220, 90))
-    d.rectangle([x + w * 0.42 - 8, y + h * 0.16 - 3, x + w * 0.42 + 8, y + h * 0.16 + 3],
-                fill=(200, 200, 200))
-    for dx, dy in [(-12, -8), (12, -8), (-12, 8), (12, 8)]:
-        d.line([x + w * 0.42, y + h * 0.16, x + w * 0.42 + dx, y + h * 0.16 + dy],
-               fill=(200, 200, 200), width=2)
+    d.rectangle([x, y, x + w, y + h], fill=(16, 24, 60))
+    for bx, bw, bh in [(8, 34, 30), (52, 26, 42), (88, 40, 26), (140, 30, 38),
+                       (180, 36, 30), (226, 28, 44), (264, 34, 28)]:
+        d.rectangle([x + bx, y + h - bh, x + bx + bw, y + h], fill=(8, 12, 32))
+        for wy in range(y + h - bh + 6, y + h - 4, 10):
+            for wx in range(x + bx + 5, x + bx + bw - 4, 10):
+                d.rectangle([wx, wy, wx + 3, wy + 4], fill=(255, 220, 90))
+    for sx, sy in [(30, 12), (120, 8), (200, 14), (280, 10)]:
+        d.ellipse([x + sx, y + sy, x + sx + 3, y + sy + 3], fill=WHITE)
+    cx, cy = x + w - 46, y + 22
+    d.ellipse([cx - 12, cy - 12, cx + 12, cy + 12], fill=(255, 140, 30))
+    for ang in range(0, 360, 45):
+        import math
+        ex = cx + 20 * math.cos(math.radians(ang))
+        ey = cy + 20 * math.sin(math.radians(ang))
+        d.line([cx, cy, ex, ey], fill=(255, 180, 60), width=3)
+    d.ellipse([x + 60, y + 10, x + 76, y + 16], fill=(180, 180, 180))
+    d.line([x + 68, y + 16, x + 68, y + 24], fill=(180, 180, 180), width=2)
+    d.line([x + 60, y + 20, x + 76, y + 20], fill=(180, 180, 180), width=2)
 
 
 def ill_kryvyi(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h * 0.5], fill=(60, 30, 20))
-    d.rectangle([x, y + h * 0.5, x + w, y + h], fill=(140, 70, 30))
-    burst(d, x + w * 0.3, y + h * 0.42, 18, (255, 160, 40))
-    burst(d, x + w * 0.3, y + h * 0.42, 10, (255, 225, 110))
-    burst(d, x + w * 0.72, y + h * 0.3, 13, (255, 140, 40))
-    burst(d, x + w * 0.72, y + h * 0.3, 7, (255, 220, 90))
-    for ex, ey, er in [(0.18, 0.2, 12), (0.5, 0.14, 9), (0.85, 0.18, 11)]:
-        d.ellipse([x + w * ex - er, y + h * ey - er * 0.7, x + w * ex + er, y + h * ey + er * 0.7],
-                  fill=(120, 110, 105))
-    d.rectangle([x, y + h * 0.82, x + w, y + h], fill=(30, 20, 16))
-    d.rectangle([x + w * 0.1, y + h * 0.62, x + w * 0.28, y + h * 0.82], fill=(45, 30, 24))
-    d.rectangle([x + w * 0.6, y + h * 0.66, x + w * 0.82, y + h * 0.82], fill=(45, 30, 24))
+    d.rectangle([x, y, x + w, y + h], fill=(120, 70, 40))
+    d.rectangle([x, y + h - 18, x + w, y + h], fill=(60, 35, 20))
+    for cx, cy, r in [(70, 30, 20), (230, 26, 24)]:
+        d.ellipse([x + cx - r, y + cy - r, x + cx + r, y + cy + r],
+                  fill=(255, 170, 40))
+        d.ellipse([x + cx - r // 2, y + cy - r // 2, x + cx + r // 2,
+                   y + cy + r // 2], fill=(255, 230, 120))
+    for cx, cy, r in [(110, 16, 12), (190, 12, 14), (270, 18, 10)]:
+        d.ellipse([x + cx - r, y + cy - r, x + cx + r, y + cy + r],
+                  fill=(90, 90, 90))
 
 
 def ill_cop31(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(135, 206, 235))
-    d.ellipse([x + w * 0.84 - 13, y + h * 0.2 - 13, x + w * 0.84 + 13, y + h * 0.2 + 13],
-              fill=(250, 215, 80))
-    d.ellipse([x + w * 0.28 - 26, y + h * 0.5 - 26, x + w * 0.28 + 26, y + h * 0.5 + 26],
-              fill=(70, 160, 90))
-    d.ellipse([x + w * 0.22 - 10, y + h * 0.42 - 7, x + w * 0.22 + 10, y + h * 0.42 + 7],
-              fill=(40, 120, 70))
-    d.ellipse([x + w * 0.34 - 8, y + h * 0.6 - 6, x + w * 0.34 + 8, y + h * 0.6 + 6],
-              fill=(40, 120, 70))
-    d.rectangle([x + w * 0.62, y + h * 0.62, x + w * 0.95, y + h * 0.88], fill=(245, 245, 240))
-    d.polygon([(x + w * 0.58, y + h * 0.62), (x + w * 0.99, y + h * 0.62),
-               (x + w * 0.78, y + h * 0.42)], fill=(192, 57, 43))
-    for i in range(3):
-        d.rectangle([x + w * (0.66 + i * 0.09), y + h * 0.7, x + w * (0.71 + i * 0.09),
-                     y + h * 0.84], fill=(27, 42, 74))
+    d.rectangle([x, y, x + w, y + h], fill=(170, 210, 235))
+    d.ellipse([x + 18, y + 8, x + 66, y + 56], fill=(60, 160, 90))
+    d.ellipse([x + 30, y + 18, x + 44, y + 30], fill=(40, 120, 70))
+    d.ellipse([x + 44, y + 34, x + 58, y + 48], fill=(40, 120, 70))
+    d.rectangle([x + 150, y + 30, x + 280, y + h - 4], fill=(240, 240, 235))
+    d.polygon([(x + 140, y + 32), (x + 215, y + 10), (x + 290, y + 32)],
+              fill=(190, 40, 40))
+    for wx in range(x + 162, x + 272, 18):
+        d.rectangle([wx, y + 40, wx + 10, y + 52], fill=(40, 70, 110))
+    d.ellipse([x + w - 34, y + 8, x + w - 8, y + 34], fill=(255, 220, 90))
 
 
 def ill_mexico(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h * 0.62], fill=(222, 184, 135))
-    d.rectangle([x, y + h * 0.62, x + w, y + h], fill=(190, 140, 90))
-    d.ellipse([x + w * 0.78 - 14, y + h * 0.24 - 14, x + w * 0.78 + 14, y + h * 0.24 + 14],
-              fill=(240, 150, 50))
-    d.rectangle([x + w * 0.16, y + h * 0.3, x + w * 0.16 + 10, y + h * 0.85], fill=(46, 125, 70))
-    d.rectangle([x + w * 0.16 - 12, y + h * 0.48, x + w * 0.16 - 2, y + h * 0.58], fill=(46, 125, 70))
-    d.rectangle([x + w * 0.26, y + h * 0.52, x + w * 0.26 + 8, y + h * 0.58], fill=(46, 125, 70))
-    d.rectangle([x + w * 0.26 + 8, y + h * 0.52, x + w * 0.26 + 18, y + h * 0.6], fill=(46, 125, 70))
-    star4(d, x + w * 0.62, y + h * 0.42, 16, (212, 175, 55))
-    d.ellipse([x + w * 0.62 - 6, y + h * 0.42 - 6, x + w * 0.62 + 6, y + h * 0.42 + 6],
-              fill=(212, 175, 55))
+    d.rectangle([x, y, x + w, y + h], fill=(235, 200, 140))
+    d.ellipse([x + w - 50, y + 8, x + w - 18, y + 40], fill=(255, 180, 60))
+    d.rectangle([x, y + h - 14, x + w, y + h], fill=(200, 140, 70))
+    d.rectangle([x + 30, y + 18, x + 40, y + h - 14], fill=(40, 130, 60))
+    d.rectangle([x + 18, y + 30, x + 30, y + 38], fill=(40, 130, 60))
+    d.rectangle([x + 40, y + 26, x + 54, y + 34], fill=(40, 130, 60))
+    cx, cy = x + 150, y + 30
+    d.ellipse([cx - 14, cy - 14, cx + 14, cy + 14], fill=(212, 175, 55),
+              outline=(150, 110, 20), width=2)
+    d.text((cx, cy), "*", font=F_SANS_B(20), fill=(150, 110, 20), anchor="mm")
 
 
 def ill_peru(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(200, 222, 238))
-    d.polygon([(x, y + h), (x + w * 0.32, y + h * 0.28), (x + w * 0.62, y + h)],
-              fill=(139, 109, 80))
-    d.polygon([(x + w * 0.32, y + h * 0.28), (x + w * 0.24, y + h * 0.46),
-               (x + w * 0.4, y + h * 0.46)], fill=(255, 255, 255))
-    d.polygon([(x + w * 0.45, y + h), (x + w * 0.78, y + h * 0.2), (x + w, y + h)],
-              fill=(110, 85, 60))
-    d.polygon([(x + w * 0.78, y + h * 0.2), (x + w * 0.71, y + h * 0.38),
-               (x + w * 0.85, y + h * 0.38)], fill=(255, 255, 255))
-    d.rectangle([x + w * 0.06, y + h * 0.68, x + w * 0.94, y + h * 0.92], fill=(255, 255, 255))
-    pts = [(x + w * 0.08, y + h * 0.8), (x + w * 0.2, y + h * 0.8), (x + w * 0.26, y + h * 0.72),
-           (x + w * 0.32, y + h * 0.88), (x + w * 0.38, y + h * 0.74), (x + w * 0.44, y + h * 0.86),
-           (x + w * 0.52, y + h * 0.7), (x + w * 0.58, y + h * 0.88), (x + w * 0.66, y + h * 0.76),
-           (x + w * 0.74, y + h * 0.84), (x + w * 0.92, y + h * 0.8)]
-    d.line(pts, fill=(192, 57, 43), width=3)
+    d.rectangle([x, y, x + w, y + h], fill=(180, 215, 240))
+    d.polygon([(x + 10, y + h), (x + 80, y + 12), (x + 150, y + h)],
+              fill=(120, 90, 70))
+    d.polygon([(x + 70, y + 12), (x + 80, y + 12), (x + 88, y + 24),
+               (x + 72, y + 24)], fill=WHITE)
+    d.polygon([(x + 120, y + h), (x + 180, y + 22), (x + 235, y + h)],
+              fill=(100, 75, 60))
+    d.rectangle([x + 8, y + h - 26, x + w - 8, y + h - 8], fill=WHITE,
+                outline=(150, 150, 150))
+    pts = []
+    for i, v in enumerate([0, -8, 6, -12, 10, -6, 4, 0]):
+        pts.append((x + 14 + i * 28, y + h - 17 + v))
+    d.line(pts, fill=(200, 30, 30), width=3)
+
 
 def ill_gta(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h * 0.35], fill=(230, 130, 60))
-    d.rectangle([x, y + h * 0.35, x + w, y + h * 0.65], fill=(200, 90, 110))
-    d.rectangle([x, y + h * 0.65, x + w, y + h], fill=(90, 50, 110))
-    d.ellipse([x + w * 0.7 - 12, y + h * 0.2 - 12, x + w * 0.7 + 12, y + h * 0.2 + 12],
-              fill=(250, 220, 120))
-    for bx, bw, bh in [(0.04, 0.14, 0.3), (0.2, 0.1, 0.42), (0.32, 0.16, 0.34),
-                       (0.52, 0.12, 0.46), (0.66, 0.15, 0.36), (0.84, 0.12, 0.3)]:
-        d.rectangle([x + w * bx, y + h - h * bh, x + w * (bx + bw), y + h], fill=(40, 25, 60))
-        d.rectangle([x + w * bx + 3, y + h - h * bh + 4, x + w * bx + 6, y + h - h * bh + 7],
-                    fill=(250, 220, 120))
-    d.rounded_rectangle([x + w * 0.32, y + h * 0.62, x + w * 0.68, y + h * 0.9], radius=8,
-                        fill=(30, 30, 40))
-    d.ellipse([x + w * 0.38 - 4, y + h * 0.72 - 4, x + w * 0.38 + 4, y + h * 0.72 + 4],
-              fill=(90, 200, 90))
-    d.ellipse([x + w * 0.62 - 4, y + h * 0.72 - 4, x + w * 0.62 + 4, y + h * 0.72 + 4],
-              fill=(230, 60, 60))
-    d.ellipse([x + w * 0.56 - 4, y + h * 0.8 - 4, x + w * 0.56 + 4, y + h * 0.8 + 4],
-              fill=(60, 140, 230))
-    d.ellipse([x + w * 0.5 - 4, y + h * 0.76 - 4, x + w * 0.5 + 4, y + h * 0.76 + 4],
-              fill=(240, 200, 60))
+    d.rectangle([x, y, x + w, y + h], fill=(255, 150, 80))
+    d.rectangle([x, y + 34, x + w, y + h], fill=(60, 30, 70))
+    d.ellipse([x + w - 40, y + 6, x + w - 14, y + 32], fill=(255, 230, 140))
+    for bx, bw, bh in [(10, 26, 26), (44, 20, 36), (72, 30, 22),
+                       (110, 24, 32), (142, 28, 24), (178, 22, 30)]:
+        d.rectangle([x + bx, y + h - bh, x + bx + bw, y + h], fill=(25, 12, 35))
+    d.rounded_rectangle([x + 88, y + h - 22, x + 150, y + h - 6], radius=6,
+                        fill=(230, 230, 230))
+    d.ellipse([x + 96, y + h - 18, x + 104, y + h - 10], fill=(40, 40, 40))
+    d.ellipse([x + 134, y + h - 18, x + 142, y + h - 10], fill=(200, 40, 40))
 
 
 def ill_mercury(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(10, 12, 30))
-    for sx, sy in [(0.1, 0.2), (0.25, 0.12), (0.7, 0.18), (0.88, 0.3), (0.55, 0.1)]:
-        d.ellipse([x + w * sx - 1, y + h * sy - 1, x + w * sx + 1, y + h * sy + 1],
-                  fill=(255, 255, 255))
-    d.ellipse([x + w * 0.06, y + h * 0.08, x + w * 0.94, y + h * 0.92], outline=(120, 120, 140),
-              width=1)
-    d.ellipse([x + w * 0.42 - 24, y + h * 0.5 - 24, x + w * 0.42 + 24, y + h * 0.5 + 24],
-              fill=(178, 150, 120))
-    for cx, cy, cr in [(0.36, 0.44, 5), (0.47, 0.56, 4), (0.4, 0.6, 3), (0.48, 0.42, 3)]:
-        d.ellipse([x + w * cx - cr, y + h * cy - cr, x + w * cx + cr, y + h * cy + cr],
-                  fill=(140, 115, 90))
-    d.polygon([(x + w * 0.8, y + h * 0.3), (x + w * 0.88, y + h * 0.38),
-               (x + w * 0.8, y + h * 0.42)], fill=(220, 220, 220))
-    d.rectangle([x + w * 0.74, y + h * 0.34, x + w * 0.8, y + h * 0.38], fill=(180, 180, 180))
+    d.rectangle([x, y, x + w, y + h], fill=(12, 12, 35))
+    for sx, sy in [(20, 10), (60, 22), (180, 8), (220, 18)]:
+        d.ellipse([x + sx, y + sy, x + sx + 3, y + sy + 3], fill=WHITE)
+    d.ellipse([x + 30, y + 14, x + 210, y + h - 6], outline=(150, 150, 180),
+              width=2)
+    cx, cy, r = x + 120, y + h // 2 + 2, 22
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(170, 140, 110))
+    d.ellipse([cx - 8, cy - 6, cx + 2, cy + 4], fill=(140, 110, 85))
+    d.ellipse([cx + 8, cy + 6, cx + 16, cy + 14], fill=(140, 110, 85))
+    d.rectangle([x + 196, y + 12, x + 214, y + 20], fill=(200, 200, 210))
+    d.polygon([(x + 214, y + 12), (x + 224, y + 16), (x + 214, y + 20)],
+              fill=(255, 200, 60))
 
 
 def ill_riemann(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(28, 60, 42))
-    d.rectangle([x + w * 0.04, y + h * 0.06, x + w * 0.96, y + h * 0.94], outline=(90, 110, 95),
+    d.rectangle([x, y, x + w, y + h], fill=(30, 80, 50))
+    d.rectangle([x + 6, y + 6, x + w - 6, y + h - 6], outline=(120, 100, 60),
                 width=2)
-    d.text((x + w * 0.07, y + h * 0.14), "\u03b6(s) = 0", font=serif_b(24),
-           fill=(255, 255, 255))
-    d.text((x + w * 0.07, y + h * 0.52), "Re(s) = \u00bd", font=serif(15),
-           fill=(220, 230, 220))
-    d.line([(x + w * 0.62, y + h * 0.55), (x + w * 0.7, y + h * 0.72), (x + w * 0.92, y + h * 0.42)],
-           fill=(90, 220, 120), width=5)
+    text(d, (x + 18, y + 5), "\u03b6(s) = 0", F_SERIF_B(18), WHITE)
+    text(d, (x + 18, y + 25), "Re(s) = \u00bd", F_SERIF(13), (220, 220, 200))
+    d.line([(x + w - 66, y + 14), (x + w - 46, y + 34), (x + w - 14, y + 6)],
+           fill=(80, 220, 120), width=4)
 
 
 def ill_basra(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(178, 178, 178))
-    for ex, ey, er in [(0.2, 0.2, 13), (0.55, 0.14, 10), (0.85, 0.22, 12)]:
-        d.ellipse([x + w * ex - er, y + h * ey - er * 0.7, x + w * ex + er, y + h * ey + er * 0.7],
-                  fill=(110, 110, 110))
-    d.polygon([(x + w * 0.12, y + h), (x + w * 0.18, y + h * 0.3), (x + w * 0.3, y + h * 0.3),
-               (x + w * 0.36, y + h)], fill=(120, 120, 120))
-    d.polygon([(x + w * 0.5, y + h), (x + w * 0.56, y + h * 0.38), (x + w * 0.68, y + h * 0.38),
-               (x + w * 0.74, y + h)], fill=(100, 100, 100))
-    burst(d, x + w * 0.24, y + h * 0.78, 12, (255, 140, 40))
-    burst(d, x + w * 0.24, y + h * 0.78, 7, (255, 220, 90))
-    burst(d, x + w * 0.62, y + h * 0.82, 10, (255, 140, 40))
-    burst(d, x + w * 0.62, y + h * 0.82, 6, (255, 220, 90))
+    d.rectangle([x, y, x + w, y + h], fill=(170, 170, 165))
+    for tx in [30, 120]:
+        d.polygon([(x + tx, y + h), (x + tx + 14, y + 14),
+                   (x + tx + 46, y + 14), (x + tx + 60, y + h)],
+                  fill=(120, 120, 115))
+    for fx, fy in [(60, 30), (150, 26), (200, 34)]:
+        d.ellipse([x + fx - 10, y + fy - 10, x + fx + 10, y + fy + 10],
+                  fill=(255, 140, 30))
+        d.ellipse([x + fx - 5, y + fy - 5, x + fx + 5, y + fy + 5],
+                  fill=(255, 220, 100))
+    d.ellipse([x + w - 40, y + 8, x + w - 16, y + 32], fill=(100, 100, 100))
 
 
 def ill_riyadh(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(15, 20, 45))
-    for sx, sy in [(0.15, 0.2), (0.4, 0.12), (0.65, 0.25), (0.9, 0.15)]:
-        d.ellipse([x + w * sx - 1, y + h * sy - 1, x + w * sx + 1, y + h * sy + 1],
-                  fill=(255, 255, 255))
-    for bx, bw, bh in [(0.05, 0.18, 0.35), (0.28, 0.14, 0.5), (0.5, 0.2, 0.4), (0.75, 0.16, 0.45)]:
-        d.rectangle([x + w * bx, y + h - h * bh, x + w * (bx + bw), y + h], fill=(8, 12, 28))
-        d.rectangle([x + w * bx + 4, y + h - h * bh + 5, x + w * bx + 8, y + h - h * bh + 9],
-                    fill=(250, 210, 90))
-    d.line([(x + w * 0.15, y + h * 0.75), (x + w * 0.45, y + h * 0.3)], fill=(255, 160, 60),
-           width=3)
-    d.line([(x + w * 0.3, y + h * 0.8), (x + w * 0.62, y + h * 0.35)], fill=(255, 160, 60),
-           width=3)
-    burst(d, x + w * 0.72, y + h * 0.3, 15, (255, 220, 90))
-    burst(d, x + w * 0.72, y + h * 0.3, 8, (255, 255, 255))
+    d.rectangle([x, y, x + w, y + h], fill=(10, 16, 45))
+    for sx, sy in [(24, 12), (90, 8), (160, 14), (210, 10)]:
+        d.ellipse([x + sx, y + sy, x + sx + 3, y + sy + 3], fill=WHITE)
+    d.rectangle([x, y + h - 16, x + w, y + h], fill=(5, 8, 25))
+    for x0, y0, x1, y1 in [(30, 44, 90, 10), (90, 46, 150, 12),
+                          (150, 44, 205, 10)]:
+        d.line([x + x0, y + y0, x + x1, y + y1], fill=(255, 150, 50), width=3)
+    cx, cy = x + 150, y + 14
+    d.ellipse([cx - 10, cy - 8, cx + 10, cy + 8], fill=(255, 230, 120))
+    for ang in range(0, 360, 45):
+        import math
+        ex = cx + 16 * math.cos(math.radians(ang))
+        ey = cy + 16 * math.sin(math.radians(ang))
+        d.line([cx, cy, ex, ey], fill=(255, 220, 100), width=2)
 
 
 def ill_gaza(d, x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=(170, 170, 170))
-    for ex, ey, er in [(0.25, 0.25, 14), (0.6, 0.18, 11), (0.85, 0.3, 12)]:
-        d.ellipse([x + w * ex - er, y + h * ey - er * 0.7, x + w * ex + er, y + h * ey + er * 0.7],
-                  fill=(100, 100, 100))
-    for bx, bw, bh in [(0.05, 0.2, 0.5), (0.3, 0.16, 0.62), (0.52, 0.22, 0.48),
-                       (0.78, 0.16, 0.55)]:
-        d.rectangle([x + w * bx, y + h - h * bh, x + w * (bx + bw), y + h], fill=(90, 90, 90))
-        for wy in range(2):
-            d.rectangle([x + w * bx + 4, y + h - h * bh + 5 + wy * 12,
-                         x + w * bx + 9, y + h - h * bh + 10 + wy * 12], fill=(60, 60, 60))
-    d.rounded_rectangle([x + w * 0.36, y + h * 0.68, x + w * 0.66, y + h * 0.88], radius=4,
-                        fill=(200, 120, 50))
-    d.ellipse([x + w * 0.42 - 5, y + h * 0.88 - 5, x + w * 0.42 + 5, y + h * 0.88 + 5],
-              fill=(30, 30, 30))
-    d.ellipse([x + w * 0.6 - 5, y + h * 0.88 - 5, x + w * 0.6 + 5, y + h * 0.88 + 5],
-              fill=(30, 30, 30))
+    d.rectangle([x, y, x + w, y + h], fill=(180, 175, 165))
+    for bx, bw, bh in [(12, 40, 34), (60, 34, 44), (102, 44, 30),
+                       (154, 36, 40), (198, 40, 32)]:
+        d.rectangle([x + bx, y + h - bh, x + bx + bw, y + h], fill=(110, 105, 100))
+    for cx, cy, r in [(70, 14, 12), (150, 10, 14), (210, 16, 10)]:
+        d.ellipse([x + cx - r, y + cy - r, x + cx + r, y + cy + r],
+                  fill=(120, 120, 120))
+    d.rounded_rectangle([x + 90, y + h - 18, x + 150, y + h - 6], radius=3,
+                        fill=(255, 140, 40))
+    d.rectangle([x + 118, y + h - 16, x + 132, y + h - 8], fill=(200, 230, 255))
 
 
-ILLS = {"kyiv": ill_kyiv, "kryvyi": ill_kryvyi, "cop31": ill_cop31, "mexico": ill_mexico,
-        "peru": ill_peru, "gta": ill_gta, "mercury": ill_mercury, "riemann": ill_riemann,
-        "basra": ill_basra, "riyadh": ill_riyadh, "gaza": ill_gaza}
-
-
-# ---------------------------------------------------------------- cards
-def card(d, x, y, w, h, num, color, cat, headline, summary, source, ill, ill_h,
-         head_size):
-    d.rectangle([x, y, x + w, y + h], fill=WHITE, outline=LINE, width=1)
-    ILLS[ill](d, x + 1, y + 1, w - 2, ill_h)
-    d.ellipse([x + 8, y + 8, x + 30, y + 30], fill=color, outline=WHITE, width=2)
-    nf = sans_b(13)
-    ntxt = str(num)
-    d.text((x + 19, y + 19), ntxt, font=nf, fill=WHITE, anchor="mm")
-    ty = y + ill_h + 7
-    d.text((x + 9, ty), cat, font=sans_b(11), fill=color)
-    ty += 14
-    hf = serif_b(head_size)
-    for ln in wrap(d, headline, hf, w - 18)[:2]:
-        d.text((x + 9, ty), ln, font=hf, fill=INK)
-        ty += head_size + 2
-    ty += 1
-    sf = serif(12)
-    for ln in wrap(d, summary, sf, w - 18)[:2]:
-        d.text((x + 9, ty), ln, font=sf, fill=(60, 60, 60))
-        ty += 14
-    d.text((x + 9, y + h - 15), source, font=sans(9), fill=GREY)
-
-
-# ---------------------------------------------------------------- dotted map
-LAND = [
-    (0.16, 0.30, 0.13, 0.16), (0.31, 0.13, 0.035, 0.05), (0.27, 0.64, 0.075, 0.17),
-    (0.50, 0.26, 0.055, 0.09), (0.52, 0.56, 0.085, 0.17), (0.72, 0.30, 0.17, 0.16),
-    (0.79, 0.60, 0.05, 0.05), (0.86, 0.74, 0.06, 0.05),
-]
-
-PINS = [(1, 0.52, 0.24), (2, 0.55, 0.28), (3, 0.565, 0.33), (4, 0.10, 0.44),
-        (5, 0.26, 0.62), (6, 0.235, 0.36), (9, 0.60, 0.40), (10, 0.585, 0.45),
-        (11, 0.565, 0.375)]
-
-
-def dotted_map(d, x, y, w, h):
-    step = 7
-    gy = y + 4
-    while gy < y + h:
-        gx = x + 4
-        while gx < x + w:
-            u = (gx - x) / w
-            v = (gy - y) / h
-            for (cu, cv, ru, rv) in LAND:
-                if ((u - cu) / ru) ** 2 + ((v - cv) / rv) ** 2 <= 1.0:
-                    d.ellipse([gx - 2, gy - 2, gx + 2, gy + 2], fill=MAP_DOT)
+def draw_map(d, x, y, w, h, pins):
+    d.rectangle([x, y, x + w, y + h], fill=CREAM)
+    # land as ellipses per continent (map coords relative to x,y)
+    land = [
+        (0.02, 0.05, 0.30, 0.45),   # N America
+        (0.10, 0.55, 0.22, 0.40),   # S America
+        (0.46, 0.05, 0.10, 0.22),   # Europe
+        (0.47, 0.28, 0.14, 0.38),   # Africa
+        (0.58, 0.05, 0.34, 0.42),   # Asia
+        (0.82, 0.62, 0.12, 0.22),   # Australia
+    ]
+    dot_r = 2
+    step = 8
+    for gy in range(y + 4, y + h - 4, step):
+        for gx in range(x + 4, x + w - 4, step):
+            rx = (gx - x) / w
+            ry = (gy - y) / h
+            inside = False
+            for (lx, ly, lw, lh) in land:
+                cx, cy = lx + lw / 2, ly + lh / 2
+                if ((rx - cx) / (lw / 2)) ** 2 + ((ry - cy) / (lh / 2)) ** 2 <= 1:
+                    inside = True
                     break
-            gx += step
-        gy += step
-    pf = sans_b(10)
-    for (num, pu, pv) in PINS:
-        px, py = x + w * pu, y + h * pv
-        d.ellipse([px - 8, py - 8, px + 8, py + 8], fill=RED, outline=WHITE, width=1)
-        d.text((px, py), str(num), font=pf, fill=WHITE, anchor="mm")
-
-# ---------------------------------------------------------------- data
-CARDS = [
-    (1, RED, "DRONE STRIKE", "Drones strike Kyiv overnight",
-     "Two hurt, one in hospital; water cut in five districts.",
-     "KYIV24 \u00b7 KLITSCHKO", "kyiv"),
-    (2, (200, 100, 30), "MISSILE", "Double-tap strike kills 2",
-     "Boy, 7, and a paramedic, 20, die; 60 wounded.", "AP", "kryvyi"),
-    (3, (40, 140, 110), "CLIMATE", "Antalya talks run past deadline",
-     "No deal yet; draft strips fossil fuels and $120bn aid.",
-     "REUTERS \u00b7 AP", "cop31"),
-    (4, (150, 100, 40), "CARTEL", "'El Chapo Isidro' captured",
-     "FBI Top 10 fugitive seized in Sinaloa; 11 killed.",
-     "REUTERS \u00b7 AP \u00b7 CNN \u00b7 WSJ", "mexico"),
-    (5, (120, 70, 160), "QUAKE", "M6.7 quake hits Jun\u00edn",
-     "Felt in Lima; no casualties reported. Depth 108 km.", "USGS", "peru"),
-    (6, (160, 60, 160), "GAMES", "GTA VI: $3.79bn day one",
-     "32.5m copies; biggest entertainment launch ever.", "TAKE-TWO", "gta"),
-    (7, (40, 90, 180), "SPACE", "Into orbit after 8 years",
-     "ESA-JAXA probe arrives after 8 years, 10bn km.", "ESA \u00b7 NATURE", "mercury"),
-    (8, (40, 140, 80), "MATHS", "'The proof checks out'",
-     "Lean community verifies the Riemann claim on Saturday.", "WSJ", "riemann"),
-    (9, (200, 100, 30), "FIRE", "Power station fire kills 4",
-     "Gas pipeline blaze halts Hartha plant; 30 injured.", "REUTERS", "basra"),
-    (10, (40, 90, 180), "DEFENCE", "Houthis fire 3 missiles at Riyadh",
-     "All intercepted; second attack in days.", "REUTERS", "riyadh"),
-    (11, RED, "WAR", "Israeli strike kills 4 in Gaza City",
-     "Three die in a food-aid van; one shot in Jabalia.", "REUTERS \u00b7 AFP", "gaza"),
-]
-
-BRIEFS = [
-    (12, "Protests sweep 25+ nations", "Day of action continues; Italy strike.", "CNN"),
-    (13, "Mosquitoes cut dengue 69%", "Wolbachia trial in Brazil, 5,700 kids.", "AP"),
-    (14, "Trade deal after 10 years", "Brussels pact cuts tariffs; from 2027.", "REUTERS"),
-    (15, "'Killer robot' talks stall", "No UN binding rules; talks go on.", "AP \u00b7 NPR"),
-    (16, "New poll: PP 0.9 pts ahead", "Right leads before Nov 29 election.", "MORE IN COMMON"),
-    (17, "No shift in US military ties", "Ottawa rejects rift after Hegseth memo.", "REUTERS"),
-    (18, "M3.3 quake off San Pedro", "538 felt reports off San Pedro.", "USGS"),
-    (19, "Russian cargo ship ablaze", "Sparta 2 hit by drones off Finland.", "NY POST \u00b7 REUTERS"),
-]
-
-
-def brief(d, x, y, w, num, headline, summary, source):
-    d.text((x, y), str(num), font=sans_b(13), fill=RED)
-    hf = serif_b(13)
-    hx = x + 24
-    ty = y
-    for ln in wrap(d, headline, hf, w - 24)[:2]:
-        d.text((hx, ty), ln, font=hf, fill=INK)
-        ty += 16
-    sf = serif(11)
-    for ln in wrap(d, summary, sf, w)[:1]:
-        d.text((x, ty + 1), ln, font=sf, fill=(60, 60, 60))
-        ty += 14
-    d.text((x, ty + 2), source, font=sans(9), fill=GREY)
+            if inside:
+                d.ellipse([gx - dot_r, gy - dot_r, gx + dot_r, gy + dot_r],
+                          fill=(40, 60, 110))
+    for (num, fx, fy) in pins:
+        px, py = x + int(fx * w), y + int(fy * h)
+        r = 9
+        d.ellipse([px - r, py - r, px + r, py + r], fill=RED,
+                  outline=WHITE, width=1)
+        text(d, (px, py), str(num), F_SANS_B(11), WHITE, anchor="mm")
 
 
 def main():
+    outdir = os.environ.get("MAKEFUN_OUTPUT_DIR", "out")
+    os.makedirs(outdir, exist_ok=True)
     img = Image.new("RGB", (W, H), CREAM)
     d = ImageDraw.Draw(img)
 
     # masthead
-    d.rectangle([16, 16, 1008, 112], fill=NAVY)
-    d.rectangle([16, 16, 88, 112], fill=RED)
-    d.text((52, 32), "NOV", font=sans_b(17), fill=WHITE, anchor="ma")
-    d.text((52, 62), "21", font=sans_b(34), fill=WHITE, anchor="ma")
-    d.text((52, 96), "SAT", font=sans_b(15), fill=WHITE, anchor="ma")
-    d.text((512, 28), "THE DAY IN WORLD NEWS", font=sans_b(15), fill=GOLD, anchor="ma")
-    d.text((512, 52), "Saturday 21 November 2026", font=serif_b(42), fill=WHITE, anchor="ma")
-    d.text((992, 30), "19 STORIES", font=sans_b(14), fill=WHITE, anchor="ra")
-    d.text((992, 52), "4 CONTINENTS", font=sans_b(14), fill=WHITE, anchor="ra")
-    d.text((992, 74), "ONE PAGE", font=sans_b(14), fill=GOLD, anchor="ra")
-    d.text((512, 122), "Everything on this page happened, or was first reported, "
-           "on Saturday 21 November 2026.", font=serif_i(15), fill=(80, 80, 80), anchor="ma")
+    d.rectangle([0, 0, W, 100], fill=NAVY)
+    d.rectangle([10, 10, 92, 90], fill=RED)
+    text(d, (51, 22), "NOV", F_SANS_B(22), WHITE, anchor="ma")
+    text(d, (51, 46), "21", F_SERIF_B(30), WHITE, anchor="ma")
+    text(d, (51, 76), "SAT", F_SANS_B(14), WHITE, anchor="ma")
+    text(d, (512, 14), "THE DAY IN WORLD NEWS", F_SANS_B(15), GOLD,
+         anchor="ma")
+    text(d, (512, 34), "Saturday 21 November 2026", F_SERIF_B(40), WHITE,
+         anchor="ma")
+    text(d, (1014, 20), "19 STORIES", F_SANS_B(14), WHITE, anchor="ra")
+    text(d, (1014, 40), "4 CONTINENTS", F_SANS_B(14), WHITE, anchor="ra")
+    text(d, (1014, 60), "ONE PAGE", F_SANS_B(14), GOLD, anchor="ra")
+    text(d, (512, 108),
+         "Everything on this page happened, or was first reported, on "
+         "Saturday 21 November 2026.", F_SERIF_I(15), (70, 70, 70),
+         anchor="ma")
 
-    # card grid
-    row1 = CARDS[0:3]
-    row2 = CARDS[3:7]
-    row3 = CARDS[7:11]
-    xs3 = [16, 349, 683]
-    ws3 = [325, 326, 325]
-    for (c, cx, cw) in zip(row1, xs3, ws3):
-        card(d, cx, 142, cw, 172, c[0], c[1], c[2], c[3], c[4], c[5], c[6], 64, 19)
-    xs4 = [16, 266, 516, 766]
-    for (c, cx) in zip(row2, xs4):
-        card(d, cx, 322, 242, 154, c[0], c[1], c[2], c[3], c[4], c[5], c[6], 52, 16)
-    for (c, cx) in zip(row3, xs4):
-        card(d, cx, 484, 242, 154, c[0], c[1], c[2], c[3], c[4], c[5], c[6], 52, 16)
+    cards = [
+        # num, cat, color, headline, summary, source, ill, row, col, span
+        (1, "DRONE STRIKE", RED, "Drones strike Kyiv overnight",
+         "Two hurt; water cut in five districts.",
+         "KYIV24 \u00b7 KLITSCHKO", ill_kyiv, 0, 0, 1),
+        (2, "MISSILE", (200, 110, 20), "Double-tap strike kills 2",
+         "Boy, 7, and a paramedic, 20, die; 60 wounded.", "AP",
+         ill_kryvyi, 0, 1, 1),
+        (3, "CLIMATE", (40, 130, 90), "Antalya talks run past deadline",
+         "No deal yet; draft strips fossil fuels, $120bn aid.",
+         "REUTERS \u00b7 AP", ill_cop31, 0, 2, 1),
+        (4, "CARTEL", (150, 100, 30), "'El Chapo Isidro' captured",
+         "Seized in Sinaloa; 11 killed.",
+         "REUTERS \u00b7 AP \u00b7 CNN \u00b7 WSJ", ill_mexico, 1, 0, 1),
+        (5, "QUAKE", (120, 60, 160), "M6.7 quake hits Jun\u00edn",
+         "Felt in Lima; depth 108 km.", "USGS",
+         ill_peru, 1, 1, 1),
+        (6, "GAMES", (140, 40, 140), "GTA VI: $3.79bn day one",
+         "32.5m copies; biggest launch ever.", "TAKE-TWO",
+         ill_gta, 1, 2, 1),
+        (7, "SPACE", (30, 60, 140), "Into orbit after 8 years",
+         "Probe arrives after 8 years.", "ESA \u00b7 NATURE",
+         ill_mercury, 1, 3, 1),
+        (8, "MATHS", (30, 120, 70), "'The proof checks out'",
+         "Lean verifies the Riemann claim.", "WSJ",
+         ill_riemann, 2, 0, 1),
+        (9, "FIRE", (200, 90, 20), "Power station fire kills 4",
+         "Hartha plant blaze; 30 hurt.", "REUTERS",
+         ill_basra, 2, 1, 1),
+        (10, "DEFENCE", (30, 70, 150), "Houthis fire 3 missiles at Riyadh",
+         "All intercepted; second attack.", "REUTERS", ill_riyadh,
+         2, 2, 1),
+        (11, "WAR", RED, "Israeli strike kills 4 in Gaza City",
+         "Three die in a food-aid van.",
+         "REUTERS \u00b7 AFP", ill_gaza, 2, 3, 1),
+    ]
+    # row geometry: row1 y=135 h=150 (3 cols), rows 2-3 y=295/455 h=150 (4 cols)
+    rows = [(135, 150, 3), (295, 150, 4), (455, 150, 4)]
+    for (num, cat, col, hl, sm, src, ill, row, cidx, span) in cards:
+        ry, rh, ncols = rows[row]
+        gap = 10
+        cw = (W - 20 - gap * (ncols - 1)) // ncols
+        cx = 10 + cidx * (cw + gap)
+        draw_card(d, cx, ry, cw, rh, num, cat, col, hl, sm, src, ill)
 
-    # bottom: map + briefs
-    d.text((16, 646), "WHERE IT HAPPENED", font=sans_b(15), fill=INK)
-    dotted_map(d, 16, 666, 480, 210)
-    lf = sans(11)
-    d.text((16, 886), "1 KYIV \u00b7 2 KRYVYI RIH \u00b7 3 ANTALYA \u00b7 4 GUASAVE \u00b7 5 JUN\u00cdN",
-           font=lf, fill=INK)
-    d.text((16, 902), "6 NEW YORK \u00b7 9 BASRA \u00b7 10 RIYADH \u00b7 11 GAZA",
-           font=lf, fill=INK)
-    d.text((512, 646), "ALSO ON SATURDAY 21 NOVEMBER", font=sans_b(15), fill=INK)
-    for i, b in enumerate(BRIEFS[:4]):
-        brief(d, 512, 666 + i * 64, 240, b[0], b[1], b[2], b[3])
-    for i, b in enumerate(BRIEFS[4:]):
-        brief(d, 764, 666 + i * 64, 244, b[0], b[1], b[2], b[3])
+    # bottom: map left, briefs right
+    by = 620
+    text(d, (10, by), "WHERE IT HAPPENED", F_SANS_B(15), INK)
+    pins = [(1, 0.48, 0.10), (2, 0.52, 0.20), (3, 0.55, 0.32),
+            (4, 0.08, 0.38), (5, 0.18, 0.68), (6, 0.24, 0.26),
+            (9, 0.64, 0.28), (10, 0.60, 0.48), (11, 0.52, 0.44)]
+    draw_map(d, 10, by + 22, 480, 170, pins)
+    text(d, (10, by + 196),
+         "1 KYIV \u00b7 2 KRYVYI RIH \u00b7 3 ANTALYA \u00b7 4 GUASAVE \u00b7 "
+         "5 JUN\u00cdN", F_SANS(10), GREY)
+    text(d, (10, by + 210),
+         "6 NEW YORK \u00b7 9 BASRA \u00b7 10 RIYADH \u00b7 11 GAZA",
+         F_SANS(10), GREY)
+
+    bx = 510
+    text(d, (bx, by), "ALSO ON SATURDAY 21 NOVEMBER", F_SANS_B(15), INK)
+    briefs = [
+        (12, "Protests sweep 25+ nations", "Day of action continues; Italy strike.", "CNN"),
+        (13, "Mosquitoes cut dengue 69%", "Wolbachia trial in Brazil, 5,700 kids.", "AP"),
+        (14, "Trade deal after 10 years", "Brussels pact cuts tariffs; from 2027.", "REUTERS"),
+        (15, "'Killer robot' talks stall", "No UN binding rules; talks go on.", "AP \u00b7 NPR"),
+        (16, "New poll: PP 0.9 pts ahead", "Right leads before Nov 29 election.", "MORE IN COMMON"),
+        (17, "No shift in US military ties", "Ottawa rejects rift after Hegseth memo.", "REUTERS"),
+        (18, "M3.3 quake off San Pedro", "538 felt reports off San Pedro.", "USGS"),
+        (19, "Russian cargo ship ablaze", "Sparta 2 hit by drones off Finland.", "NY POST \u00b7 REUTERS"),
+    ]
+    # two columns of briefs
+    col_w = 245
+    for i, (num, hl, sm, src) in enumerate(briefs):
+        col = i % 2
+        row = i // 2
+        x = bx + col * (col_w + 10)
+        y = by + 24 + row * 48
+        text(d, (x, y), str(num), F_SANS_B(13), RED)
+        bhl = wrap(d, hl, F_SERIF_B(13), col_w - 24)
+        yy = y
+        for ln in bhl[:1]:
+            text(d, (x + 22, yy), ln, F_SERIF_B(13))
+            yy += 16
+        text(d, (x + 22, yy), sm, F_SERIF(11), (60, 60, 60))
+        text(d, (x + 22, yy + 14), src, F_SANS(9), GREY)
 
     # date check strip
-    d.rectangle([16, 928, 1008, 962], outline=RED, width=2)
-    dc = ("DATE CHECK \u2014 NOT 21 NOVEMBER:  "
-          "Friday's market crash (S&P \u22123.7%) \u00b7 Kyiv bridge barrage \u00b7 "
-          "Bayer $7.25bn deal \u00b7 FBI/USDA hack \u00b7 Rinderknecht verdict \u00b7 "
-          "Myanmar ICJ ruling (19 Nov) \u00b7 UK drones (19 Nov) \u2014 all 20 Nov or earlier.")
-    lines = wrap(d, dc, serif(12), 960)
-    ly = 934
-    for ln in lines[:2]:
-        d.text((28, ly), ln, font=serif(12), fill=INK)
-        ly += 15
+    sy = 852
+    d.rectangle([10, sy, W - 10, sy + 44], outline=RED, width=2)
+    dc = ("DATE CHECK \u2014 NOT 21 NOVEMBER:  Friday's market crash "
+          "(S&P \u22123.7%) \u00b7 Kyiv bridge barrage \u00b7 Bayer $7.25bn "
+          "deal \u00b7 FBI/USDA hack \u00b7 Rinderknecht verdict \u00b7 "
+          "Myanmar ICJ ruling (19 Nov) \u00b7 UK drones (19 Nov) \u2014 all "
+          "20 Nov or earlier.")
+    dcl = wrap(d, dc, F_SANS(12), W - 40)
+    yy = sy + 6
+    for ln in dcl[:2]:
+        text(d, (20, yy), ln, F_SANS(12))
+        yy += 16
 
     # footer
-    d.text((512, 970), "All 19 stories happened, or were first reported, on Saturday "
-           "21 November 2026. Sources: Reuters \u00b7 AP \u00b7 AFP \u00b7 CNN \u00b7 USGS \u00b7 "
-           "ESA \u00b7 Take-Two \u00b7 Kyiv24. Original drawings.",
-           font=sans(10), fill=GREY, anchor="ma")
+    text(d, (512, 908),
+         "All 19 stories happened, or were first reported, on Saturday "
+         "21 November 2026. Sources: Reuters \u00b7 AP \u00b7 AFP \u00b7 CNN "
+         "\u00b7 USGS \u00b7 ESA \u00b7 Take-Two \u00b7 Kyiv24. Original "
+         "drawings.", F_SANS(10), GREY, anchor="ma")
+    text(d, (512, 924),
+         "SATURDAY 21 NOVEMBER 2026 \u00b7 THE DAY IN WORLD NEWS",
+         F_SANS_B(10), GREY, anchor="ma")
 
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, "entry.png")
-    else:
-        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.png")
-    img.save(out_path, "PNG")
-    print("wrote", out_path)
+    img.save(os.path.join(outdir, "entry.png"), "PNG")
+    print("wrote", os.path.join(outdir, "entry.png"))
 
 
 if __name__ == "__main__":
